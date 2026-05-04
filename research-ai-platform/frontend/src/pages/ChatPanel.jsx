@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from 'axios';
+import API_BASE_URL from '../config/api';
 import PaperContext from '../contexts/PaperContext';
 import { useAuth } from '../contexts/AuthContext';
 import PageLoader from '../components/PageLoader';
@@ -30,7 +31,7 @@ export default function ChatPanel() {
     setLoading(true);
 
     try {
-      const response = await axios.post('http://localhost:8000/chat', { paper_id: paperId, question });
+      const response = await axios.post(`${API_BASE_URL}/chat`, { paper_id: paperId, question });
       setMessages((prev) => [...prev, { role: 'assistant', text: response.data.answer }]);
       const cCount = parseInt(localStorage.getItem(`paperpilot_chats_count_${userId}`) || '0');
       localStorage.setItem(`paperpilot_chats_count_${userId}`, String(cCount + 1));
@@ -48,7 +49,7 @@ export default function ChatPanel() {
     return (
       <div className="chat-page">
         <div className="no-paper-card">
-          <h2>No paper uploaded yet. Please go to Analyze page first.</h2>
+          <h2>No pipeline uploaded yet. Please go to Analyze page first.</h2>
           <button className="chat-go-upload-btn" onClick={() => navigate('/upload')}>
             Go to Analyze
           </button>
@@ -60,18 +61,18 @@ export default function ChatPanel() {
   return (
     <div className="chat-page">
       <div className="chat-header">
-        <h1>Chat with Paper</h1>
-        <p>Ask questions about your uploaded paper using AI-powered Q&A.</p>
+        <h1>Debug Assistant</h1>
+        <p>Ask questions about your ML pipeline</p>
       </div>
 
       <div className="active-paper-bar">
-        Chatting about: <strong>{filename}</strong>
+        Debugging: <strong>{filename}</strong>
       </div>
 
       <div className="chat-window">
         {messages.length === 0 && (
           <div className="chat-empty">
-            <p>Ask a question about your paper to get started.</p>
+            <p>Ask a question about your pipeline to get started.</p>
           </div>
         )}
         {messages.map((msg, i) => (
@@ -93,7 +94,7 @@ export default function ChatPanel() {
       <div className="chat-input-bar">
         <input
           type="text"
-          placeholder="Type your question..."
+          placeholder="Ask about your pipeline... e.g. 'Why is my model overfitting?'"
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === 'Enter' && handleSend()}

@@ -50,8 +50,8 @@ async def explain(req: ExplainRequest):
 
 @router.post("/chat")
 async def chat(req: ChatRequest):
-    """Answer a question about the paper (RAG pipeline stub)."""
-    answer = answer_question(req.question, req.context)
+    """Answer a question about the paper (RAG pipeline)."""
+    answer = await answer_question(req.question, req.paper_id)
     return {
         "paper_id": req.paper_id,
         "question": req.question,

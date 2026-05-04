@@ -2,6 +2,8 @@
 Paper Service — handles PDF upload, text extraction, and chunking.
 """
 
+from datetime import datetime
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from routes.paper_routes import router
@@ -20,8 +22,12 @@ app.add_middleware(
 
 
 @app.get("/health")
-async def health():
-    return {"status": "healthy", "service": "paper-service"}
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "paper-service",
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 
 app.include_router(router)

@@ -1,53 +1,149 @@
-# Docker Compose — PaperPilot Microservices
-# This is a placeholder; full Dockerfiles and configs will be added later.
 
-version: "3.9"
 
 services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: pipelineiq-postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: paperpilot_auth
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - pipelineiq-network
+
   api-gateway:
-    build: ./services/api-gateway
+    build:
+      context: ./services/api-gateway
+    container_name: pipelineiq-gateway
     ports:
       - "8000:8000"
     environment:
+      - JWT_SECRET=${JWT_SECRET}
       - PAPER_SERVICE_URL=http://paper-service:8001
       - AI_SERVICE_URL=http://ai-service:8002
       - VECTOR_SERVICE_URL=http://vector-service:8003
       - CITATION_SERVICE_URL=http://citation-service:8004
+      - AUTH_SERVICE_URL=http://auth-service:8005
     depends_on:
       - paper-service
       - ai-service
       - vector-service
       - citation-service
+      - auth-service
+    restart: unless-stopped
+    networks:
+      - pipelineiq-network
+
+  auth-service:
+    build:
+      context: ./services/auth-service
+    container_name: pipelineiq-auth
+    ports:
+      - "8005:8005"
+    environment:
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/paperpilot_auth
+      - JWT_SECRET=${JWT_SECRET}
+      - JWT_EXPIRES_IN=7d
+      - GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+      - GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+      - EMAIL_USER=${EMAIL_USER}
+      - EMAIL_PASS=${EMAIL_PASS}
+      - OTP_EXPIRES_MINUTES=10
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    networks:
+      - pipelineiq-network
 
   paper-service:
-    build: ./services/paper-service
+    build:
+      context: ./services/paper-service
+    container_name: pipelineiq-paper
     ports:
       - "8001:8001"
+    environment:
+      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_DB=paperpilot
+      - VECTOR_SERVICE_URL=http://vector-service:8003
     volumes:
-      - ./storage/pdfs:/app/storage/pdfs
+      - paper_uploads:/app/storage/pdfs
+    restart: unless-stopped
+    networks:
+      - pipelineiq-network
 
   ai-service:
-    build: ./services/ai-service
+    build:
+      context: ./services/ai-service
+    container_name: pipelineiq-ai
     ports:
       - "8002:8002"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - GROQ_API_KEY=${GROQ_API_KEY}
+      - GROQ_MODEL=llama-3.3-70b-versatile
+      - GROQ_BASE_URL=https://api.groq.com/openai/v1
+      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_DB=paperpilot
+      - PAPER_SERVICE_URL=http://paper-service:8001
+      - VECTOR_SERVICE_URL=http://vector-service:8003
+    restart: unless-stopped
+    networks:
+      - pipelineiq-network
 
   vector-service:
-    build: ./services/vector-service
+    build:
+      context: ./services/vector-service
+    container_name: pipelineiq-vector
     ports:
       - "8003:8003"
     environment:
-      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - PAPER_SERVICE_URL=http://paper-service:8001
+      - QDRANT_URL=${QDRANT_URL}
+      - QDRANT_API_KEY=${QDRANT_API_KEY}
+      - MONGODB_URI=${MONGODB_URI}
+      - MONGODB_DB=paperpilot
+    restart: unless-stopped
+    networks:
+      - pipelineiq-network
 
   citation-service:
-    build: ./services/citation-service
+    build:
+      context: ./services/citation-service
+    container_name: pipelineiq-citation
     ports:
       - "8004:8004"
+    restart: unless-stopped
+    networks:
+      - pipelineiq-network
 
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      args:
+       - VITE_API_URL=http://localhost:8000
+       - VITE_GOOGLE_CLIENT_ID=${VITE_GOOGLE_CLIENT_ID}
+    container_name: pipelineiq-frontend
     ports:
-      - "5173:5173"
+      - "5173:80"
     depends_on:
       - api-gateway
+    restart: unless-stopped
+    networks:
+      - pipelineiq-network
+
+volumes:
+  postgres_data:
+  paper_uploads:
+
+networks:
+  pipelineiq-network:
+    driver: bridge

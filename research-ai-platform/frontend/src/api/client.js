@@ -1,11 +1,12 @@
 import axios from 'axios';
+import API_BASE_URL from '../config/api';
 
 /**
  * Axios client pre-configured to talk to the API Gateway.
  * In dev mode, Vite's proxy handles forwarding to localhost:8000.
  */
 const apiClient = axios.create({
-  baseURL: 'http://localhost:8000',
+  baseURL: API_BASE_URL,
   timeout: 120_000,
   headers: {
     'Content-Type': 'application/json',

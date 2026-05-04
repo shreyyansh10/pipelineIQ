@@ -1,171 +1,222 @@
-import os
-import httpx
-import numpy as np
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, HTTPException, Request
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
-import faiss
+from qdrant_client import QdrantClient
+from qdrant_client.models import Distance, VectorParams, PointStruct, PayloadSchemaType, Filter, FieldCondition, MatchValue
+import os
+import uuid
+from datetime import datetime
 
-app = FastAPI(title="Vector Service", version="1.0")
+app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Environment variables
+QDRANT_URL = os.getenv("QDRANT_URL")
+QDRANT_API_KEY = os.getenv("QDRANT_API_KEY")
+PAPER_SERVICE_URL = os.getenv("PAPER_SERVICE_URL", "http://localhost:8001")
 
-PAPER_SERVICE_URL = "http://localhost:8001"
+# Initialize embedding model
+print("Loading sentence-transformers model...")
+model = SentenceTransformer('all-MiniLM-L6-v2')
+print("✅ Model loaded successfully")
 
-# Load sentence transformer model
-print("Loading embedding model...")
-embedding_model = SentenceTransformer("all-MiniLM-L6-v2")
-print("Embedding model loaded!")
+# Qdrant configuration
+COLLECTION_NAME = "paper_chunks"
+VECTOR_SIZE = 384
 
-# In-memory store for FAISS indexes
-# { paper_id: { "index": faiss_index, "chunks": [str] } }
-VECTOR_STORE: dict = {}
+# Initialize Qdrant client
+if QDRANT_URL and QDRANT_API_KEY:
+    try:
+        qdrant = QdrantClient(url=QDRANT_URL, api_key=QDRANT_API_KEY)
+        print(f"✅ Connected to Qdrant at {QDRANT_URL}")
+    except Exception as e:
+        print(f"❌ Qdrant connection failed: {e}")
+        qdrant = None
+else:
+    qdrant = None
+    print("⚠️ WARNING: Qdrant credentials not found")
 
-# ── Request Models ─────────────────────────────────────
+@app.on_event("startup")
+async def startup():
+    """Create Qdrant collection if it doesn't exist"""
+    if qdrant:
+        try:
+            # Try to get collection info
+            try:
+                collection_info = qdrant.get_collection(COLLECTION_NAME)
+                print(f"✅ Qdrant collection already exists: {COLLECTION_NAME}")
+                
+                # Create index on paper_id if it doesn't exist
+                try:
+                    qdrant.create_payload_index(
+                        collection_name=COLLECTION_NAME,
+                        field_name="paper_id",
+                        field_schema=PayloadSchemaType.KEYWORD
+                    )
+                    print(f"✅ Created index on paper_id field")
+                except Exception as idx_err:
+                    if "already exists" in str(idx_err).lower():
+                        print(f"✅ Index on paper_id already exists")
+                    else:
+                        print(f"⚠️ Index creation warning: {idx_err}")
+                        
+            except Exception:
+                # Collection doesn't exist, create it
+                qdrant.create_collection(
+                    collection_name=COLLECTION_NAME,
+                    vectors_config=VectorParams(
+                        size=VECTOR_SIZE, 
+                        distance=Distance.COSINE
+                    )
+                )
+                print(f"✅ Created Qdrant collection: {COLLECTION_NAME}")
+                
+                # Create index on paper_id
+                qdrant.create_payload_index(
+                    collection_name=COLLECTION_NAME,
+                    field_name="paper_id",
+                    field_schema=PayloadSchemaType.KEYWORD
+                )
+                print(f"✅ Created index on paper_id field")
+        except Exception as e:
+            if "already exists" not in str(e).lower():
+                print(f"❌ Qdrant startup error: {e}")
 
 class EmbedRequest(BaseModel):
     paper_id: str
+    chunks: list[str]
+    user_id: str = "anonymous"
 
 class SearchRequest(BaseModel):
     paper_id: str
     query: str
     top_k: int = 5
-
-# ── Health ─────────────────────────────────────────────
-
-@app.get("/health")
-def health():
-    return {"status": "healthy", "service": "vector-service"}
-
-# ── Embed Paper ────────────────────────────────────────
+    user_id: str = "anonymous"
 
 @app.post("/embed")
-async def embed_paper(request: EmbedRequest):
-    paper_id = request.paper_id
+async def embed_chunks(request: EmbedRequest):
+    """Generate embeddings and store in Qdrant"""
+    try:
+        if not qdrant:
+            raise HTTPException(
+                status_code=503,
+                detail="Qdrant not configured. Check QDRANT_URL and QDRANT_API_KEY"
+            )
 
-    # Check if already embedded
-    if paper_id in VECTOR_STORE:
+        print(f"Embedding {len(request.chunks)} chunks for paper {request.paper_id}")
+
+        embeddings = model.encode(request.chunks)
+
+        points = []
+        for i, (chunk, embedding) in enumerate(zip(request.chunks, embeddings)):
+            points.append(PointStruct(
+                id=str(uuid.uuid4()),
+                vector=embedding.tolist(),
+                payload={
+                    "paper_id": request.paper_id,
+                    "user_id": request.user_id,
+                    "chunk_text": chunk,
+                    "chunk_index": i,
+                    "created_at": datetime.utcnow().isoformat()
+                }
+            ))
+
+        qdrant.upsert(
+            collection_name=COLLECTION_NAME,
+            points=points
+        )
+
+        # Verify points count for this paper_id
+        info = qdrant.count(
+            collection_name=COLLECTION_NAME,
+            count_filter=Filter(
+                must=[FieldCondition(key="paper_id", match=MatchValue(value=request.paper_id))]
+            )
+        )
+        print(f"✅ Successfully embedded {len(points)} chunks. Total points for this paper: {info.count}")
+
         return {
             "success": True,
-            "paper_id": paper_id,
-            "message": "Paper already embedded",
-            "total_chunks": len(VECTOR_STORE[paper_id]["chunks"])
+            "message": f"Embedded {len(request.chunks)} chunks for paper {request.paper_id}",
+            "chunks_count": len(request.chunks),
+            "total_paper_points": info.count
         }
 
-    # Fetch chunks from Paper Service
-    async with httpx.AsyncClient(timeout=30) as client:
-        response = await client.get(
-            f"{PAPER_SERVICE_URL}/paper/{paper_id}"
-        )
-        if response.status_code == 404:
-            raise HTTPException(
-                status_code=404,
-                detail="Paper not found. Please upload first."
-            )
-        if response.status_code != 200:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to fetch paper from Paper Service."
-            )
-        data = response.json()
-        chunks = data.get("chunks", [])
-
-    if not chunks:
-        raise HTTPException(
-            status_code=422,
-            detail="Paper has no text chunks to embed."
-        )
-
-    # Generate embeddings for all chunks
-    print(f"Generating embeddings for {len(chunks)} chunks...")
-    embeddings = embedding_model.encode(
-        chunks,
-        convert_to_numpy=True,
-        show_progress_bar=False
-    )
-
-    # Normalize embeddings for cosine similarity
-    embeddings = embeddings.astype(np.float32)
-    faiss.normalize_L2(embeddings)
-
-    # Create FAISS index
-    dimension = embeddings.shape[1]
-    index = faiss.IndexFlatIP(dimension)
-    index.add(embeddings)
-
-    # Store in memory
-    VECTOR_STORE[paper_id] = {
-        "index": index,
-        "chunks": chunks
-    }
-
-    print(f"Embedded {len(chunks)} chunks for paper {paper_id}")
-
-    return {
-        "success": True,
-        "paper_id": paper_id,
-        "total_chunks": len(chunks),
-        "embedding_dimension": dimension,
-        "message": f"Successfully embedded {len(chunks)} chunks"
-    }
-
-# ── Search ─────────────────────────────────────────────
+    except Exception as e:
+        print(f"❌ Embedding failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Embedding failed: {str(e)}")
 
 @app.post("/search")
-async def search(request: SearchRequest):
-    paper_id = request.paper_id
+async def search_similar(request: SearchRequest):
+    """Search for similar chunks using vector similarity"""
+    try:
+        if not qdrant:
+            raise HTTPException(
+                status_code=503,
+                detail="Qdrant not configured. Check QDRANT_URL and QDRANT_API_KEY"
+            )
 
-    # Auto-embed if not already done
-    if paper_id not in VECTOR_STORE:
-        await embed_paper(EmbedRequest(paper_id=paper_id))
+        print(f"Searching for paper_id: {request.paper_id}, query: {request.query[:50]}...")
 
-    store = VECTOR_STORE[paper_id]
-    index = store["index"]
-    chunks = store["chunks"]
+        # First check if there are ANY points for this paper_id
+        count_info = qdrant.count(
+            collection_name=COLLECTION_NAME,
+            count_filter=Filter(
+                must=[FieldCondition(key="paper_id", match=MatchValue(value=request.paper_id))]
+            )
+        )
+        print(f"Total points found in DB for paper_id {request.paper_id}: {count_info.count}")
 
-    # Embed the query
-    query_embedding = embedding_model.encode(
-        [request.query],
-        convert_to_numpy=True
-    )
-    query_embedding = query_embedding.astype(np.float32)
-    faiss.normalize_L2(query_embedding)
+        if count_info.count == 0:
+            # Check total points in collection to see if it's generally empty
+            total_info = qdrant.get_collection(COLLECTION_NAME)
+            print(f"WARNING: No points for this paper. Total points in whole collection: {total_info.points_count}")
 
-    # Search FAISS for top_k similar chunks
-    top_k = min(request.top_k, len(chunks))
-    distances, indices = index.search(query_embedding, top_k)
+        query_embedding = model.encode([request.query])[0]
 
-    # Build results
-    results = []
-    for i, (dist, idx) in enumerate(
-        zip(distances[0], indices[0])
-    ):
-        if idx >= 0:
-            results.append({
-                "chunk_index": int(idx),
-                "chunk_text": chunks[idx],
-                "similarity_score": float(dist)
-            })
+        results = qdrant.search(
+            collection_name=COLLECTION_NAME,
+            query_vector=query_embedding.tolist(),
+            query_filter=Filter(
+                must=[
+                    FieldCondition(
+                        key="paper_id",
+                        match=MatchValue(value=request.paper_id)
+                    )
+                ]
+            ),
+            limit=request.top_k
+        )
 
+        chunks = [hit.payload["chunk_text"] for hit in results]
+
+        print(f"✅ Found {len(chunks)} relevant chunks")
+
+        return {
+            "success": True,
+            "chunks": chunks,
+            "count": len(chunks),
+            "total_available": count_info.count
+        }
+
+    except Exception as e:
+        print(f"❌ Search failed: {e}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint"""
+    qdrant_status = "connected" if qdrant else "not configured"
     return {
-        "success": True,
-        "paper_id": paper_id,
-        "query": request.query,
-        "results": results
+        "status": "healthy",
+        "service": "vector-service",
+        "qdrant": qdrant_status,
+        "model": "all-MiniLM-L6-v2",
+        "timestamp": datetime.utcnow().isoformat()
     }
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=8003,
-        reload=True
-    )
+    uvicorn.run(app, host="0.0.0.0", port=8003)

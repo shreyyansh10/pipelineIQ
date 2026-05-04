@@ -17,9 +17,9 @@ import './App.css';
 
 const NAV_ITEMS = [
   { path: '/dashboard', label: 'Dashboard' },
-  { path: '/upload', label: 'Analyze' },
-  { path: '/chat', label: 'Chat' },
-  { path: '/citations', label: 'Citations' },
+  { path: '/upload', label: 'Analyze Pipeline' },
+  { path: '/chat', label: 'Debug Assistant' },
+  { path: '/citations', label: 'Best Practices' },
 ];
 
 function AuthRedirect({ children }) {

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import API_BASE_URL from '../config/api';
 import axios from 'axios';
 
 const LoginPage = () => {
@@ -19,7 +20,7 @@ const LoginPage = () => {
     try {
       setLoading(true);
       setError('');
-      const res = await axios.post('http://localhost:8000/auth/google', {
+      const res = await axios.post(`${API_BASE_URL}/auth/google`, {
         idToken: response.credential,
       });
       if (res.data.success) {
@@ -76,7 +77,7 @@ const LoginPage = () => {
     try {
       setLoading(true);
       setError('');
-      const res = await axios.post('http://localhost:8000/auth/login', { email, password });
+      const res = await axios.post(`${API_BASE_URL}/auth/login`, { email, password });
       if (res.data.success) {
         login(res.data.user, res.data.token);
         navigate('/dashboard');
@@ -151,7 +152,7 @@ const LoginPage = () => {
           fontWeight: 800,
           marginBottom: '8px',
           color: 'var(--accent)',
-        }}>PaperPilot</div>
+        }}>PipelineIQ</div>
         <p style={{ color: 'var(--text-muted)', marginTop: 0, marginBottom: '28px' }}>
           Welcome back
         </p>

@@ -1,7 +1,22 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import API_BASE_URL from '../config/api';
 import './DashboardPage.css';
+
+void API_BASE_URL;
+
+const FILE_TYPE_COLORS = {
+  python: '#3b82f6',
+  notebook: '#f59e0b',
+  pdf: '#ef4444',
+};
+
+const FILE_TYPE_LABELS = {
+  python: 'Python',
+  notebook: 'Notebook',
+  pdf: 'PDF',
+};
 
 function useCountUp(target, duration = 1500) {
   const [count, setCount] = useState(0);
@@ -9,7 +24,6 @@ function useCountUp(target, duration = 1500) {
 
   useEffect(() => {
     if (target <= 0) { setCount(0); return; }
-    let start = 0;
     const startTime = performance.now();
     const animate = (now) => {
       const elapsed = now - startTime;
@@ -36,7 +50,7 @@ export default function DashboardPage() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const userId = user?.id || 'guest';
-  const userName = user?.name || 'Researcher';
+  const userName = user?.name || 'Engineer';
 
   const [stats, setStats] = useState({ papers: 0, summaries: 0, explanations: 0, chats: 0 });
   const [recentPapers, setRecentPapers] = useState([]);
@@ -58,10 +72,10 @@ export default function DashboardPage() {
   const chatsCount = useCountUp(stats.chats);
 
   const statCards = [
-    { label: 'Papers Uploaded', count: papersCount },
-    { label: 'Summaries Generated', count: summariesCount },
-    { label: 'Explanations Created', count: explanationsCount },
-    { label: 'Chat Messages', count: chatsCount },
+    { label: 'Pipelines Analyzed', count: papersCount, icon: '∑' },
+    { label: 'Overviews Generated', count: summariesCount, icon: '◫' },
+    { label: 'Reviews Generated', count: explanationsCount, icon: '✦' },
+    { label: 'Debug Queries', count: chatsCount, icon: '⌘' },
   ];
 
   return (
@@ -69,7 +83,7 @@ export default function DashboardPage() {
       {/* Welcome */}
       <div className="dash-welcome">
         <h1>{getGreeting()}, {userName}</h1>
-        <p>Here's your research activity</p>
+        <p>Your ML pipeline analysis history</p>
       </div>
 
       {/* Stats */}
@@ -77,50 +91,62 @@ export default function DashboardPage() {
         {statCards.map((s, i) => (
           <div
             key={i}
-            className="dash-stat-card"
+            className="dash-stat-card card-enter"
             style={{ animation: `fadeInUp 0.5s ease ${i * 0.1}s both` }}
           >
+            <div className="dash-stat-icon">{s.icon}</div>
             <div className="dash-stat-number">{s.count}</div>
             <div className="dash-stat-label">{s.label}</div>
           </div>
         ))}
       </div>
 
-      {/* Recent Papers */}
+      {/* Recent Pipelines */}
       <div className="dash-section">
-        <h2>Recent Papers</h2>
-        <p className="dash-section-sub">Continue working on your papers</p>
+        <h2>Recent Pipelines</h2>
+        <p className="dash-section-sub">Continue working on your pipelines</p>
         {recentPapers.length === 0 ? (
           <div className="dash-empty">
-            <p>No papers yet</p>
+            <p>No pipelines yet</p>
             <button className="dash-accent-btn" onClick={() => navigate('/upload')}>
-              Upload Your First Paper
+              Analyze Your First Pipeline
             </button>
           </div>
         ) : (
           <div className="dash-papers-grid">
-            {recentPapers.slice(0, 3).map((paper, i) => (
-              <div
-                key={i}
-                className="dash-paper-card"
-                style={{ animation: `slideInLeft 0.4s ease ${i * 0.1}s both` }}
-              >
-                <div className="dash-paper-info">
-                  <div className="dash-paper-top">
-                    <span>{paper.filename}</span>
-                    <span className="dash-paper-date">
-                      {new Date(paper.uploaded_at).toLocaleDateString()}
-                    </span>
+            {recentPapers.slice(0, 5).map((paper, i) => {
+              const ft = paper.file_type || 'pdf';
+              const ftLabel = FILE_TYPE_LABELS[ft] || 'File';
+              const ftColor = FILE_TYPE_COLORS[ft] || '#6b7280';
+              return (
+                <div
+                  key={i}
+                  className="dash-paper-card card-enter"
+                  style={{ animation: `slideInLeft 0.4s ease ${i * 0.1}s both` }}
+                >
+                  <div className="dash-paper-info">
+                    <div className="dash-paper-top">
+                      <span>{paper.filename}</span>
+                      <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                        <span style={{
+                          fontSize: '10px', fontWeight: 700, color: '#fff',
+                          background: ftColor, padding: '2px 8px', borderRadius: '8px',
+                        }}>{ftLabel}</span>
+                        <span className="dash-paper-date">
+                          {new Date(paper.uploaded_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="dash-paper-stats">
+                      Words: {paper.total_words?.toLocaleString()}&ensp;|&ensp;Chunks: {paper.total_chunks}
+                    </div>
                   </div>
-                  <div className="dash-paper-stats">
-                    Words: {paper.total_words?.toLocaleString()}&ensp;|&ensp;Chunks: {paper.total_chunks}
-                  </div>
+                  <button className="dash-accent-btn" onClick={() => navigate('/upload')}>
+                    View Analysis →
+                  </button>
                 </div>
-                <button className="dash-accent-btn" onClick={() => navigate('/upload')}>
-                  Analyze Again
-                </button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

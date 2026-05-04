@@ -9,12 +9,12 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
   const { isDark, toggleTheme } = useTheme();
 
   const [collapsed, setCollapsed] = useState(() => {
-    const saved = localStorage.getItem('paperpilot_sidebar_collapsed');
+    const saved = localStorage.getItem('pipelineiq_sidebar_collapsed');
     return saved === 'true';
   });
 
   useEffect(() => {
-    localStorage.setItem('paperpilot_sidebar_collapsed', collapsed);
+    localStorage.setItem('pipelineiq_sidebar_collapsed', collapsed);
     const main = document.querySelector('.main-content');
     if (main) {
       if (collapsed) main.classList.add('sidebar-collapsed');
@@ -38,8 +38,8 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
     top: 0,
     height: '100vh',
     width: collapsed ? 'var(--sidebar-collapsed)' : 'var(--sidebar-width)',
-    background: 'var(--bg-card)',
-    borderRight: '1px solid var(--border-color)',
+    background: isDark ? '#0a0a0a' : '#f9fafb',
+    borderRight: '1px solid var(--border)',
     transition: 'width 0.3s ease',
     zIndex: 100,
     display: 'flex',
@@ -52,7 +52,7 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
     alignItems: 'center',
     justifyContent: 'space-between',
     padding: '16px',
-    borderBottom: '1px solid var(--border-color)',
+    borderBottom: '1px solid var(--border)',
     flexShrink: 0,
     minHeight: '60px',
   };
@@ -69,6 +69,7 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
     fontWeight: 500,
     color: isActive ? 'var(--accent)' : 'var(--text-secondary)',
     background: isActive ? 'var(--accent-bg)' : 'transparent',
+    border: '1px solid transparent',
     borderLeft: isActive ? '3px solid var(--accent)' : '3px solid transparent',
     transition: 'all 0.2s ease',
     whiteSpace: 'nowrap',
@@ -86,35 +87,36 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
             color: 'var(--accent)',
             letterSpacing: '0.5px',
             flexShrink: 0,
-          }}>PP</span>
+          }}>IQ</span>
           <span style={{
             fontSize: '15px',
             fontWeight: 700,
-            color: 'var(--accent)',
+            color: 'var(--text-primary)',
             opacity: collapsed ? 0 : 1,
             width: collapsed ? 0 : 'auto',
             overflow: 'hidden',
             transition: 'opacity 0.2s ease, width 0.3s ease',
             whiteSpace: 'nowrap',
-          }}>PaperPilot</span>
+          }}>PipelineIQ</span>
         </div>
         <button
           onClick={() => setCollapsed(!collapsed)}
           title={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           style={{
-            background: 'var(--bg-surface)',
-            border: '1px solid var(--border-color)',
-            borderRadius: '6px',
-            width: '28px',
-            height: '28px',
+            background: 'transparent',
+            border: '1px solid var(--border)',
+            borderRadius: '10px',
+            width: '34px',
+            height: '34px',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            color: 'var(--text-secondary)',
-            fontSize: '11px',
+            color: 'var(--text-primary)',
+            fontSize: '12px',
+            fontWeight: 700,
             cursor: 'pointer',
             flexShrink: 0,
-            transition: 'transform 0.3s ease, background 0.2s ease',
+            transition: 'transform 0.3s ease, background 0.2s ease, border-color 0.2s ease',
             transform: collapsed ? 'rotate(180deg)' : 'rotate(0deg)',
           }}
         >◀</button>
@@ -131,12 +133,14 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
             onMouseEnter={(e) => {
               if (!e.currentTarget.classList.contains('active')) {
                 e.currentTarget.style.background = 'var(--bg-surface)';
+                e.currentTarget.style.color = 'var(--text-primary)';
               }
             }}
             onMouseLeave={(e) => {
               const isActive = e.currentTarget.getAttribute('aria-current') === 'page';
               if (!isActive) {
                 e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = 'var(--text-secondary)';
               }
             }}
           >
@@ -172,9 +176,9 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
             alignItems: 'center',
             gap: '10px',
             padding: '10px 12px',
-            borderRadius: '8px',
-            background: 'var(--bg-surface)',
-            border: 'none',
+            borderRadius: '10px',
+            background: 'transparent',
+            border: '1px solid var(--border)',
             color: 'var(--text-secondary)',
             fontSize: '13px',
             cursor: 'pointer',
@@ -183,7 +187,7 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
             whiteSpace: 'nowrap',
           }}
         >
-          <span style={{ fontSize: '13px', flexShrink: 0, fontWeight: 600 }}>{isDark ? 'LT' : 'DK'}</span>
+          <span style={{ fontSize: '13px', flexShrink: 0, fontWeight: 700 }}>{isDark ? '☀' : '☾'}</span>
           <span style={{
             opacity: collapsed ? 0 : 1,
             width: collapsed ? 0 : 'auto',
@@ -192,7 +196,7 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
           }}>{isDark ? 'Light Mode' : 'Dark Mode'}</span>
         </button>
 
-        <div style={{ height: '1px', background: 'var(--border-color)', margin: '4px 0 8px' }} />
+        <div style={{ height: '1px', background: 'var(--border)', margin: '4px 0 8px' }} />
 
         {/* User info */}
         <div style={{
@@ -267,9 +271,9 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
             padding: '10px 12px',
             marginTop: '8px',
             borderRadius: '8px',
-            background: 'var(--danger-bg, rgba(239,68,68,0.1))',
-            border: '1px solid var(--danger-border, rgba(239,68,68,0.3))',
-            color: 'var(--danger, #ef4444)',
+            background: 'var(--danger-bg)',
+            border: '1px solid var(--danger-border)',
+            color: 'var(--danger)',
             fontSize: '13px',
             fontWeight: 600,
             cursor: 'pointer',
@@ -278,7 +282,7 @@ const Sidebar = ({ navItems, onCollapsedChange }) => {
             transition: 'all 0.2s ease',
           }}
           onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.2)'; }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--danger-bg, rgba(239,68,68,0.1))'; }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = 'var(--danger-bg)'; }}
         >
           <span style={{ fontSize: '13px', flexShrink: 0, fontWeight: 700 }}>X</span>
           <span style={{

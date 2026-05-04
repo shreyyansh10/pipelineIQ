@@ -1,0 +1,65 @@
+{
+  "family": "paperpilot-api-gateway",
+  "networkMode": "awsvpc",
+  "requiresCompatibilities": ["FARGATE"],
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "taskRoleArn": "arn:aws:iam::<ACCOUNT_ID>:role/ecsTaskRole",
+  "containerDefinitions": [
+    {
+      "name": "api-gateway",
+      "image": "<ACCOUNT_ID>.dkr.ecr.<REGION>.amazonaws.com/paperpilot/api-gateway:latest",
+      "portMappings": [
+        {
+          "containerPort": 8000,
+          "protocol": "tcp"
+        }
+      ],
+      "essential": true,
+      "environment": [
+        {
+          "name": "PAPER_SERVICE_URL",
+          "value": "http://paper-service.local:8001"
+        },
+        {
+          "name": "AI_SERVICE_URL",
+          "value": "http://ai-service.local:8002"
+        },
+        {
+          "name": "VECTOR_SERVICE_URL",
+          "value": "http://vector-service.local:8003"
+        },
+        {
+          "name": "CITATION_SERVICE_URL",
+          "value": "http://citation-service.local:8004"
+        },
+        {
+          "name": "AUTH_SERVICE_URL",
+          "value": "http://auth-service.local:8005"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "JWT_SECRET",
+          "valueFrom": "arn:aws:secretsmanager:<REGION>:<ACCOUNT_ID>:secret:paperpilot/jwt-secret"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/paperpilot-api-gateway",
+          "awslogs-region": "<REGION>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "healthCheck": {
+        "command": ["CMD-SHELL", "python -c \"import requests; requests.get('http://localhost:8000/health', timeout=5)\""],
+        "interval": 30,
+        "timeout": 5,
+        "retries": 3,
+        "startPeriod": 10
+      }
+    }
+  ]
+}

@@ -1,3 +1,5 @@
+from datetime import datetime
+
 import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -20,8 +22,12 @@ class SearchRequest(BaseModel):
     limit: int = 10
 
 @app.get("/health")
-def health():
-    return {"status": "healthy", "service": "citation-service"}
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "citation-service",
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
 @app.post("/search")
 async def search_papers(request: SearchRequest):

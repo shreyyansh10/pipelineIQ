@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
+import API_BASE_URL from '../config/api';
 import axios from 'axios';
 
 const SignupPage = () => {
@@ -29,7 +30,7 @@ const SignupPage = () => {
     try {
       setLoading(true);
       setError('');
-      const res = await axios.post('http://localhost:8000/auth/google', {
+      const res = await axios.post(`${API_BASE_URL}/auth/google`, {
         idToken: response.credential,
       });
       if (res.data.success) {
@@ -92,7 +93,7 @@ const SignupPage = () => {
       setLoading(true);
       setError('');
       const response = await axios.post(
-        'http://localhost:8000/auth/send-otp',
+        `${API_BASE_URL}/auth/send-otp`,
         { name, email }
       );
 
@@ -127,7 +128,7 @@ const SignupPage = () => {
       setError('');
 
       const response = await axios.post(
-        'http://localhost:8000/auth/verify-otp-only',
+        `${API_BASE_URL}/auth/verify-otp-only`,
         { email, otp: otp.toString() }
       );
 
@@ -155,7 +156,7 @@ const SignupPage = () => {
       setLoading(true);
       setError('');
       setSuccess('');
-      await axios.post('http://localhost:8000/auth/send-otp', { name, email });
+      await axios.post(`${API_BASE_URL}/auth/send-otp`, { name, email });
       setSuccess('Code resent!');
       setTimeout(() => setSuccess(''), 3000);
     } catch (err) {
@@ -190,7 +191,7 @@ const SignupPage = () => {
       console.log('Calling API...');
 
       const response = await axios.post(
-        'http://localhost:8000/auth/verify-otp',
+        `${API_BASE_URL}/auth/verify-otp`,
         {
           name: name,
           email: email,
@@ -625,7 +626,7 @@ const SignupPage = () => {
           fontWeight: 800,
           marginBottom: '8px',
           color: 'var(--accent)',
-        }}>PaperPilot</div>
+        }}>PipelineIQ</div>
 
         <StepIndicator />
 

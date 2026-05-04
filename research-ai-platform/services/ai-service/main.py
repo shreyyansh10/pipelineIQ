@@ -1,10 +1,13 @@
 import os
 import httpx
+import json
 from openai import OpenAI
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from dotenv import load_dotenv
+from datetime import datetime
+from motor.motor_asyncio import AsyncIOMotorClient
 
 load_dotenv()
 
@@ -15,13 +18,24 @@ GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
 PAPER_SERVICE_URL = os.getenv("PAPER_SERVICE_URL", "http://localhost:8001")
 VECTOR_SERVICE_URL = os.getenv("VECTOR_SERVICE_URL", "http://localhost:8003")
 
+MONGODB_URI = os.getenv("MONGODB_URI")
+MONGODB_DB = os.getenv("MONGODB_DB", "paperpilot")
+
+if MONGODB_URI:
+    mongo_client = AsyncIOMotorClient(MONGODB_URI)
+    db = mongo_client[MONGODB_DB]
+    print(f"✅ Connected to MongoDB: {MONGODB_DB}")
+else:
+    db = None
+    print("⚠️ WARNING: MONGODB_URI not set, database features disabled")
+
 # Initialize Groq client (OpenAI-compatible)
 groq_client = OpenAI(
     api_key=GROQ_API_KEY,
     base_url=GROQ_BASE_URL
 )
 
-app = FastAPI(title="AI Service", version="1.0")
+app = FastAPI(title="AI Service", version="2.0")
 
 app.add_middleware(
     CORSMiddleware,
@@ -34,6 +48,13 @@ app.add_middleware(
 # -- Request Models ------------------------------------
 
 class SummarizeRequest(BaseModel):
+    paper_id: str
+
+class AnalyzeRequest(BaseModel):
+    paper_id: str
+    file_type: str = "python"
+
+class ScoreRequest(BaseModel):
     paper_id: str
 
 class ExplainRequest(BaseModel):
@@ -71,11 +92,11 @@ async def fetch_paper_text(paper_id: str) -> str:
         full_text = " ".join(chunks)
         return full_text[:30000]
 
-# -- Helper: Call Grok API -----------------------------
+# -- Helper: Call Groq API -----------------------------
 
-def call_grok(
+def call_groq(
     prompt: str,
-    system_prompt: str = "You are an expert academic assistant.",
+    system_prompt: str = "You are an expert ML engineer assistant.",
     max_tokens: int = 1000,
     temperature: float = 0.7
 ) -> str:
@@ -105,30 +126,68 @@ def call_grok(
 # -- Health --------------------------------------------
 
 @app.get("/health")
-def health():
-    return {"status": "healthy", "service": "ai-service"}
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "ai-service",
+        "timestamp": datetime.utcnow().isoformat()
+    }
 
-# -- Summarize -----------------------------------------
+# -- Summarize (Pipeline Overview) ---------------------
 
 @app.post("/summarize")
-async def summarize(request: SummarizeRequest):
-    paper_text = await fetch_paper_text(request.paper_id)
+async def summarize(request: SummarizeRequest, http_request: Request):
+    pipeline_text = await fetch_paper_text(request.paper_id)
+    user_id = http_request.headers.get("X-User-Id", "anonymous")
 
-    prompt = f"""Read the following research paper or 
-document and provide a clear concise summary in 4-6 sentences.
+    prompt = f"""You are a senior ML engineer conducting a production code review of an ML pipeline.
 
-The summary should cover:
-- What the document is about
-- The main topics or contributions
-- Key findings or conclusions
-- Why it is important or useful
+Analyze this ML pipeline code/content and provide a comprehensive overview covering:
 
-Document text:
-{paper_text}
+1. PIPELINE OVERVIEW
+   What type of ML pipeline is this?
+   What problem does it solve?
+   What is the overall architecture?
 
-Provide only the summary, no extra commentary."""
+2. TECHNOLOGY STACK
+   What frameworks/libraries are used?
+   (TensorFlow, PyTorch, scikit-learn, etc.)
+   What data sources/formats?
 
-    summary = call_grok(prompt, max_tokens=500)
+3. PIPELINE STAGES IDENTIFIED
+   List each stage found:
+   - Data loading/ingestion
+   - Preprocessing/feature engineering
+   - Model definition
+   - Training loop
+   - Evaluation
+   - Deployment/serving
+
+4. QUICK ASSESSMENT
+   Overall quality: [Poor/Fair/Good/Excellent]
+   Production readiness: [Not Ready/Partial/Ready]
+   Most critical concern in one sentence.
+
+Be specific and reference actual code/content found.
+Format as a clear technical summary.
+
+Pipeline content:
+{pipeline_text}"""
+
+    summary = call_groq(prompt, max_tokens=800)
+
+    if db is not None:
+        try:
+            await db.summaries.update_one(
+                {"paper_id": request.paper_id, "user_id": user_id},
+                {"$set": {
+                    "summary": summary,
+                    "updated_at": datetime.utcnow()
+                }},
+                upsert=True
+            )
+        except Exception as e:
+            print(f"MongoDB save error: {e}")
 
     return {
         "success": True,
@@ -136,137 +195,286 @@ Provide only the summary, no extra commentary."""
         "summary": summary
     }
 
-# -- Explain -------------------------------------------
+# -- Analyze (Detailed Pipeline Analysis) -------------
+
+@app.post("/analyze")
+async def analyze_pipeline(request: AnalyzeRequest, http_request: Request):
+    pipeline_text = await fetch_paper_text(request.paper_id)
+    user_id = http_request.headers.get("X-User-Id", "anonymous")
+
+    prompt = f"""You are a senior ML engineer doing a detailed production-grade code review.
+
+Analyze this ML pipeline for ALL of these aspects:
+
+═══ 1. DATA PREPROCESSING ANALYSIS ═══
+Check for:
+- Missing value handling
+- Data leakage risks
+- Feature scaling/normalization
+- Train/test split correctness
+- Data augmentation appropriateness
+- Imbalanced dataset handling
+
+═══ 2. MODEL ARCHITECTURE ANALYSIS ═══
+Check for:
+- Architecture appropriateness for the task
+- Layer configurations
+- Activation functions correctness
+- Regularization techniques (dropout, L1/L2)
+- Parameter count efficiency
+- Transfer learning usage
+
+═══ 3. TRAINING LOOP ANALYSIS ═══
+Check for:
+- Learning rate configuration
+- Optimizer choice and settings
+- Loss function appropriateness
+- Batch size considerations
+- Early stopping implementation
+- Gradient clipping
+- Training stability issues
+
+═══ 4. EVALUATION METRICS ANALYSIS ═══
+Check for:
+- Appropriate metrics for the task
+- Validation strategy (k-fold, holdout)
+- Overfitting/underfitting indicators
+- Baseline comparison
+- Statistical significance testing
+
+═══ 5. DEPLOYMENT READINESS ═══
+Check for:
+- Model serialization/saving
+- Inference optimization
+- Error handling and logging
+- Input validation
+- Scalability considerations
+- Monitoring and observability
+- Security vulnerabilities
+
+For EACH issue found provide:
+- Issue title
+- Severity: [CRITICAL/WARNING/INFO]
+- Location: where in the code
+- Description: what the problem is
+- Fix: specific code example to fix it
+
+Format your response as JSON:
+{{
+  "data_preprocessing": {{
+    "score": 0-100,
+    "issues": [
+      {{
+        "title": "issue name",
+        "severity": "CRITICAL/WARNING/INFO",
+        "location": "line/function name",
+        "description": "what is wrong",
+        "fix": "code or explanation to fix"
+      }}
+    ]
+  }},
+  "model_architecture": {{
+    "score": 0-100,
+    "issues": [...]
+  }},
+  "training_loop": {{
+    "score": 0-100,
+    "issues": [...]
+  }},
+  "evaluation_metrics": {{
+    "score": 0-100,
+    "issues": [...]
+  }},
+  "deployment_readiness": {{
+    "score": 0-100,
+    "issues": [...]
+  }},
+  "overall_score": 0-100,
+  "summary": "one paragraph overall assessment",
+  "top_3_priorities": ["most important fix 1", "fix 2", "fix 3"]
+}}
+
+Return ONLY valid JSON. No extra text.
+
+Pipeline content:
+{pipeline_text}"""
+
+    try:
+        raw_response = call_groq(
+            prompt,
+            system_prompt="You are a senior ML engineer. Always respond with valid JSON only.",
+            max_tokens=2000,
+            temperature=0.3
+        )
+
+        clean = raw_response.strip()
+        if clean.startswith("```json"):
+            clean = clean[7:]
+        if clean.startswith("```"):
+            clean = clean[3:]
+        if clean.endswith("```"):
+            clean = clean[:-3]
+
+        analysis = json.loads(clean.strip())
+
+        if db is not None:
+            try:
+                await db.analyses.update_one(
+                    {"paper_id": request.paper_id, "user_id": user_id},
+                    {"$set": {
+                        "analysis": analysis,
+                        "updated_at": datetime.utcnow()
+                    }},
+                    upsert=True
+                )
+            except Exception as e:
+                print(f"MongoDB save error: {e}")
+
+        return {
+            "success": True,
+            "paper_id": request.paper_id,
+            "analysis": analysis
+        }
+
+    except json.JSONDecodeError:
+        return {
+            "success": True,
+            "paper_id": request.paper_id,
+            "analysis": {"raw": raw_response}
+        }
+
+# -- Get Analysis (cached) ----------------------------
+
+@app.get("/analysis/{paper_id}")
+async def get_analysis(paper_id: str, request: Request):
+    user_id = request.headers.get("X-User-Id", "anonymous")
+    # No persistent DB in this version — return not found
+    return {"success": False, "analysis": None}
+
+# -- Explain (Best Practices Review) ------------------
 
 @app.post("/explain")
-async def explain(request: ExplainRequest):
-    paper_text = await fetch_paper_text(request.paper_id)
+async def explain(request: ExplainRequest, http_request: Request):
+    pipeline_text = await fetch_paper_text(request.paper_id)
     level = request.level.lower()
+    user_id = http_request.headers.get("X-User-Id", "anonymous")
 
     if level == "beginner":
-        system_prompt = "You are explaining to a 6 year old child."
+        prompt = f"""You are explaining ML code issues to a junior developer with 6 months experience.
 
-        prompt = f"""I am 6 years old. Explain this to me.
+Review this ML pipeline and explain:
+1. What it does in very simple terms
+2. The 3 most important problems found
+   (explain WHY each is a problem simply)
+3. Simple step-by-step fixes anyone can follow
+4. What good ML code looks like vs this code
 
-    Use ONLY these types of words:
-    - Words like: big, small, fast, slow, good, bad
-    - Compare everything to: toys, food, animals, games
-    - No big words AT ALL
+Use simple language. No jargon. 
+Give analogies where helpful.
+Be encouraging and constructive.
 
-    Tell me like a bedtime story.
-    Start with: "Once upon a time, some smart people wanted to..."
-
-    Write 4 paragraphs. Each paragraph is 3-4 sentences.
-    Total must be more than 200 words.
-
-    Here is the document:
-    {paper_text}
-
-    Remember: I am 6 years old. Use ONLY baby-simple words."""
+Pipeline:
+{pipeline_text}"""
 
     elif level == "intermediate":
-        system_prompt = "You are a university professor giving a lecture."
+        prompt = f"""You are a ML engineer reviewing code for a mid-level data scientist.
 
-        prompt = f"""You are giving a university lecture.
-    Write lecture notes for undergraduate students.
+Review this ML pipeline and provide:
+1. Technical assessment of the architecture
+2. Specific issues with technical explanations
+3. Code-level fixes with examples
+4. Best practices being violated
+5. Performance optimization opportunities
+6. Testing strategies to add
 
-    Use these EXACT headings:
+Use proper ML terminology.
+Reference specific frameworks and tools.
 
-    # What Is This About?
-    [2-3 paragraphs explaining the topic]
-
-    # Main Technical Concepts
-    [explain 3-4 key concepts with definitions]
-
-    # How It Works
-    [step by step explanation of the methodology]
-
-    # Results and Findings  
-    [what was discovered or achieved]
-
-    # Why This Matters
-    [real world applications and importance]
-
-    Write minimum 400 words total.
-    Use academic language but explain technical terms.
-
-    Document:
-    {paper_text}"""
+Pipeline:
+{pipeline_text}"""
 
     elif level == "expert":
-        system_prompt = "You are a critical peer reviewer for Nature journal."
+        prompt = f"""You are a principal ML engineer reviewing for a senior researcher/engineer.
 
-        prompt = f"""Write a critical peer review analysis.
+Provide a rigorous technical review covering:
+1. Architecture decisions and trade-offs
+2. Statistical validity of approach
+3. Scalability analysis
+4. Production engineering concerns
+5. Research-level improvements possible
+6. Comparison with SOTA approaches
+7. Mathematical correctness of implementations
+8. Distributed training considerations
+9. MLOps maturity assessment
+10. Security and compliance issues
 
-    Use these EXACT headings:
+Be critical. Reference papers and industry standards.
+Assume expert-level knowledge.
 
-    # Abstract-Level Assessment
-    [Technical summary of contributions]
-
-    # Methodology Critique
-    [Detailed technical analysis of methods used]
-
-    # Results Evaluation  
-    [Critical analysis of results and metrics]
-
-    # Technical Innovations
-    [What is genuinely novel about this work]
-
-    # Weaknesses and Limitations
-    [Critical weaknesses in the approach]
-
-    # Recommended Future Work
-    [Technical directions for future research]
-
-    Write minimum 600 words.
-    Use highly technical language throughout.
-    Be critical and precise.
-
-    Document:
-    {paper_text}"""
+Pipeline:
+{pipeline_text}"""
 
     else:
-        system_prompt = "You are an expert academic assistant."
-        prompt = f"""Explain this document clearly 
-for a general educated audience in 300+ words.
+        prompt = f"""Explain this ML pipeline clearly for a general educated audience in 300+ words.
 
-Document:
-{paper_text}"""
+Pipeline:
+{pipeline_text}"""
 
-    # Use level-specific generation settings for explanations
     if level == "beginner":
-        max_tokens = 600
-        temperature = 0.9
+        max_tokens, temperature = 800, 0.7
     elif level == "intermediate":
-        max_tokens = 900
-        temperature = 0.7
+        max_tokens, temperature = 1000, 0.5
     elif level == "expert":
-        max_tokens = 1400
-        temperature = 0.3
+        max_tokens, temperature = 1400, 0.3
     else:
-        max_tokens = 600
-        temperature = 0.7
+        max_tokens, temperature = 600, 0.7
 
-    explanation = call_grok(
+    explanation = call_groq(
         prompt,
-        system_prompt=system_prompt,
+        system_prompt="You are an expert ML engineer reviewer.",
         max_tokens=max_tokens,
         temperature=temperature
     )
 
+    if db is not None:
+        try:
+            await db.explanations.update_one(
+                {"paper_id": request.paper_id, "user_id": user_id, "level": level},
+                {"$set": {
+                    "explanation": explanation,
+                    "updated_at": datetime.utcnow()
+                }},
+                upsert=True
+            )
+        except Exception as e:
+            print(f"MongoDB save error: {e}")
+
     return {
         "success": True,
         "paper_id": request.paper_id,
-        "level": request.level,
+        "level": level,
         "explanation": explanation
     }
 
-# -- Chat (RAG) ----------------------------------------
+# -- Chat (RAG - Debug Assistant) ----------------------
 
 @app.post("/chat")
-async def chat(request: ChatRequest):
+async def chat(request: ChatRequest, http_request: Request):
     paper_id = request.paper_id
     question = request.question
+    user_id = http_request.headers.get("X-User-Id", "anonymous")
+
+    if db is not None:
+        try:
+            await db.chat_history.insert_one({
+                "paper_id": paper_id,
+                "user_id": user_id,
+                "role": "user",
+                "content": question,
+                "timestamp": datetime.utcnow()
+            })
+        except Exception as e:
+            print(f"MongoDB save error: {e}")
 
     # Step 1: Search relevant chunks via Vector Service
     async with httpx.AsyncClient(timeout=30) as http_client:
@@ -284,19 +492,26 @@ async def chat(request: ChatRequest):
                 detail="Vector search failed."
             )
         search_data = search_response.json()
-        relevant_chunks = search_data.get("results", [])
+        relevant_chunks = search_data.get("chunks", search_data.get("results", []))
 
     if not relevant_chunks:
+        print(f"WARNING: No relevant chunks found for paper {paper_id}. Possible embedding failure.")
         raise HTTPException(
             status_code=422,
-            detail="No relevant content found in paper."
+            detail="No relevant content found in this paper. This usually happens if the paper wasn't processed correctly. Please try re-uploading the paper."
         )
 
     # Step 2: Build context from top chunks
-    context = "\n\n---\n\n".join([
-        f"Excerpt {i+1}:\n{chunk['chunk_text']}"
-        for i, chunk in enumerate(relevant_chunks)
-    ])
+    if relevant_chunks and isinstance(relevant_chunks[0], str):
+        context = "\n\n---\n\n".join([
+            f"Excerpt {i+1}:\n{chunk}"
+            for i, chunk in enumerate(relevant_chunks)
+        ])
+    else:
+        context = "\n\n---\n\n".join([
+            f"Excerpt {i+1}:\n{chunk['chunk_text']}"
+            for i, chunk in enumerate(relevant_chunks)
+        ])
 
     # Step 3: Build RAG prompt
     prompt = f"""Use ONLY the following excerpts from 
@@ -318,11 +533,35 @@ Instructions:
 
 Answer:"""
 
-    answer = call_grok(
+    system_prompt = """You are an expert ML engineer helping a developer debug and improve their ML pipeline.
+You have deep knowledge of:
+- PyTorch, TensorFlow, scikit-learn, HuggingFace
+- MLOps, model serving, monitoring
+- Data engineering and feature stores
+- Distributed training
+- Model optimization and quantization
+
+Answer questions about the pipeline accurately.
+Suggest specific code fixes when asked.
+Reference best practices from the industry."""
+
+    answer = call_groq(
         prompt,
-        system_prompt="You are an expert academic assistant helping users understand research papers. Answer questions accurately based only on the provided document excerpts.",
+        system_prompt=system_prompt,
         max_tokens=800
     )
+
+    if db is not None:
+        try:
+            await db.chat_history.insert_one({
+                "paper_id": paper_id,
+                "user_id": user_id,
+                "role": "assistant",
+                "content": answer,
+                "timestamp": datetime.utcnow()
+            })
+        except Exception as e:
+            print(f"MongoDB save error: {e}")
 
     return {
         "success": True,
@@ -331,6 +570,24 @@ Answer:"""
         "answer": answer,
         "sources_used": len(relevant_chunks)
     }
+
+
+@app.get("/chat-history/{paper_id}")
+async def get_chat_history(paper_id: str, request: Request):
+    user_id = request.headers.get("X-User-Id", "anonymous")
+
+    if db is not None:
+        try:
+            messages = await db.chat_history.find(
+                {"paper_id": paper_id, "user_id": user_id},
+                {"_id": 0}
+            ).sort("timestamp", 1).to_list(100)
+            return {"success": True, "messages": messages}
+        except Exception as e:
+            print(f"MongoDB fetch error: {e}")
+            return {"success": False, "messages": []}
+
+    return {"success": False, "messages": []}
 
 # -- Run -----------------------------------------------
 

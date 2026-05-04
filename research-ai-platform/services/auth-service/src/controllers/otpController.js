@@ -248,8 +248,6 @@ const verifyOTPOnly = async (req, res) => {
   }
 };
 
-module.exports = { sendOTP, verifyOTPAndRegister };
-
 module.exports = {
   sendOTP,
   verifyOTPOnly,

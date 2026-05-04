@@ -8,7 +8,11 @@ app.use(cors({ origin: '*' }));
 app.use(express.json());
 
 app.get('/health', (req, res) => {
-  res.json({ status: 'healthy', service: 'auth-service' });
+  res.json({
+    status: 'healthy',
+    service: 'auth-service',
+    timestamp: new Date().toISOString()
+  });
 });
 
 app.use('/auth', authRoutes);

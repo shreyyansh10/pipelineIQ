@@ -1,49 +1,28 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
+import { useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useTheme } from '../contexts/ThemeContext';
-
-/* ── Data ──────────────────────────────────────────────────── */
-const floatingCards = [
-  { text: 'paper.pdf — Summary generated', dur: '4s', delay: '0s' },
-  { text: 'What is RAG? — RAG stands for...', dur: '5s', delay: '0.8s' },
-  { text: 'Beginner level — Simplified!', dur: '4.5s', delay: '1.5s' },
-  { text: 'Analyzing chunks — Insights ready', dur: '6s', delay: '0.3s' },
-];
+import { initNeuralNetworkCanvas } from '../utils/neuralNetworkCanvas';
 
 const features = [
-  { title: 'Smart PDF Upload', desc: 'Extract text from any research paper instantly with our intelligent parser' },
-  { title: 'AI Summarization', desc: 'Get concise 4-6 sentence summaries of complex papers in seconds' },
-  { title: '3 Learning Levels', desc: 'Beginner, Intermediate, Expert — tailored to your knowledge level' },
-  { title: 'Chat with Paper', desc: 'Ask any question and get answers grounded in your actual document' },
+  { icon: '⬚', title: 'Multi-format Upload', desc: 'Drop Python files, notebooks, or papers into one workflow.' },
+  { icon: '◉', title: 'Health Scoring', desc: 'See a 0-100 pipeline score with graded analysis dimensions.' },
+  { icon: '⌕', title: 'Issue Detection', desc: 'Find critical bugs, warnings, and fixes in seconds.' },
+  { icon: '✦', title: 'Debug Assistant', desc: 'Ask follow-up questions and inspect the pipeline interactively.' },
 ];
 
 const steps = [
-  { num: '1', title: 'Upload', desc: 'Drop your research PDF into PaperPilot' },
-  { num: '2', title: 'Analyze', desc: 'AI processes, chunks, and understands your paper' },
-  { num: '3', title: 'Learn', desc: 'Get summaries, explanations, and chat with it' },
+  { num: '1', title: 'Upload', desc: 'Add your ML file, notebook, or paper.' },
+  { num: '2', title: 'Analyze', desc: 'PipelineIQ reviews the code like a senior engineer.' },
+  { num: '3', title: 'Improve', desc: 'Fix issues and iterate with production-grade guidance.' },
 ];
 
-const particles = [
-  { top: '10%', left: '5%', size: 6, dur: '5s', delay: '0s' },
-  { top: '20%', left: '15%', size: 4, dur: '7s', delay: '1s' },
-  { top: '60%', left: '8%', size: 8, dur: '6s', delay: '2s' },
-  { top: '80%', left: '20%', size: 5, dur: '8s', delay: '0.5s' },
-  { top: '15%', right: '10%', size: 7, dur: '5.5s', delay: '1.5s' },
-  { top: '40%', right: '5%', size: 4, dur: '6.5s', delay: '0.8s' },
-  { top: '70%', right: '15%', size: 6, dur: '7s', delay: '2.5s' },
-  { top: '30%', right: '25%', size: 5, dur: '5s', delay: '1.2s' },
-  { top: '50%', left: '50%', size: 3, dur: '9s', delay: '3s' },
-  { top: '5%', left: '40%', size: 6, dur: '6s', delay: '0.3s' },
-  { top: '85%', left: '60%', size: 4, dur: '7.5s', delay: '1.8s' },
-  { top: '45%', right: '40%', size: 5, dur: '5.5s', delay: '2.2s' },
-];
-
-/* ── Intersection Observer hook ────────────────────────────── */
 function useScrollReveal() {
   const ref = useRef(null);
-  const observe = useCallback(() => {
+
+  useEffect(() => {
     const el = ref.current;
-    if (!el) return;
+    if (!el) return undefined;
+
     const observer = new IntersectionObserver(
       (entries) => {
         entries.forEach((entry) => {
@@ -55,355 +34,309 @@ function useScrollReveal() {
       },
       { threshold: 0.15 }
     );
+
     observer.observe(el);
     return () => observer.disconnect();
   }, []);
-  useEffect(() => { const cleanup = observe(); return cleanup; }, [observe]);
+
   return ref;
 }
 
-/* ── Component ─────────────────────────────────────────────── */
 export default function LandingPage() {
   const navigate = useNavigate();
   const { isDark, toggleTheme } = useTheme();
-  const [visible, setVisible] = useState(false);
-  const heroRef = useRef(null);
-  const heroContentRef = useRef(null);
+  const canvasRef = useRef(null);
   const featuresRef = useScrollReveal();
   const stepsRef = useScrollReveal();
 
-  useEffect(() => { setTimeout(() => setVisible(true), 100); }, []);
-
-  /* ── 3D Mouse Tilt on Hero ─────────────────────────────── */
   useEffect(() => {
-    const hero = heroRef.current;
-    const content = heroContentRef.current;
-    if (!hero || !content) return;
+    const cleanup = initNeuralNetworkCanvas('network-canvas');
+    return () => { if (cleanup) cleanup(); };
+  }, []);
 
-    const handleMove = (e) => {
-      const rect = hero.getBoundingClientRect();
-      const x = e.clientX - rect.left;
-      const y = e.clientY - rect.top;
-      const tiltX = (x / rect.width - 0.5) * 8;
-      const tiltY = (y / rect.height - 0.5) * -8;
-      content.style.transform = `perspective(1000px) rotateX(${tiltY}deg) rotateY(${tiltX}deg)`;
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return undefined;
+
+    const ctx = canvas.getContext('2d');
+    const dpr = window.devicePixelRatio || 1;
+    let W = window.innerWidth;
+    let H = window.innerHeight;
+
+    const N = 10000;
+    const px = new Float32Array(N);
+    const py = new Float32Array(N);
+    const pz = new Float32Array(N);
+    const vx = new Float32Array(N);
+    const vy = new Float32Array(N);
+    const vz = new Float32Array(N);
+    const tx = new Float32Array(N);
+    const ty = new Float32Array(N);
+    const tz = new Float32Array(N);
+    const hue = new Float32Array(N);
+    const phase = new Float32Array(N);
+
+    const PHI = Math.PI * (1 + Math.sqrt(5));
+    const FOV = 550;
+    const CAMERA_Z = 600;
+    const REPEL_RADIUS = 120;
+    const REPEL_FORCE = 6;
+
+    let rotY = 0;
+    let mouseX = -9999;
+    let mouseY = -9999;
+    let animT = 0;
+    let animFrame;
+
+    function initText(width, height) {
+      const tempCanvas = document.createElement('canvas');
+      const tempCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+      const tw = Math.min(Math.max(width, 800), 1200);
+      const th = 400;
+      tempCanvas.width = tw;
+      tempCanvas.height = th;
+
+      tempCtx.fillStyle = '#000';
+      tempCtx.fillRect(0, 0, tw, th);
+      tempCtx.fillStyle = '#fff';
+      tempCtx.textAlign = 'center';
+      tempCtx.textBaseline = 'middle';
+
+      const font1 = Math.min(110, tw / 7);
+      const font2 = Math.min(52, tw / 13);
+
+      tempCtx.font = `bold ${font1}px "Inter", system-ui, sans-serif`;
+      tempCtx.fillText('PipelineIQ', tw / 2, th / 2 - font1 * 0.3);
+      tempCtx.font = `bold ${font2}px "Inter", system-ui, sans-serif`;
+      tempCtx.fillText('ML Pipeline Analyzer', tw / 2, th / 2 + font1 * 0.65);
+
+      const imgData = tempCtx.getImageData(0, 0, tw, th).data;
+      const points = [];
+
+      for (let y = 0; y < th; y += 2) {
+        for (let x = 0; x < tw; x += 2) {
+          const i = (y * tw + x) * 4;
+          if (imgData[i] > 128) {
+            points.push({ x: x - tw / 2, y: y - th / 2 });
+          }
+        }
+      }
+
+      for (let i = 0; i < N; i++) {
+        if (points.length > 0) {
+          const pt = points[Math.floor(Math.random() * points.length)];
+          // Reduced particle spread to make the text crisper and readable
+          tx[i] = pt.x + (Math.random() - 0.5) * 2.5;
+          ty[i] = pt.y + (Math.random() - 0.5) * 2.5;
+          tz[i] = (Math.random() - 0.5) * 8;
+        } else {
+          tx[i] = 0; ty[i] = 0; tz[i] = 0;
+        }
+      }
+    }
+
+    function initParticles(width, height) {
+      for (let i = 0; i < N; i++) {
+        px[i] = (Math.random() - 0.5) * width * 2;
+        py[i] = (Math.random() - 0.5) * height * 2;
+        pz[i] = (Math.random() - 0.5) * 1000;
+        vx[i] = 0;
+        vy[i] = 0;
+        vz[i] = 0;
+        hue[i] = 140 + (i / N) * 60;
+        phase[i] = Math.random() * Math.PI * 2;
+      }
+    }
+
+    function update(mouseXRef, mouseYRef, width, height) {
+      animT += 0.005;
+      rotY = Math.sin(animT * 2) * 0.15; // Gentle rocking instead of full rotation
+
+      const CX = width / 2;
+      const CY = height / 2;
+
+      for (let i = 0; i < N; i++) {
+        const cosY = Math.cos(rotY);
+        const sinY = Math.sin(rotY);
+
+        let targetX = tx[i] * cosY - tz[i] * sinY;
+        let targetY = ty[i];
+        let targetZ = tx[i] * sinY + tz[i] * cosY;
+
+        targetX += Math.sin(animT * 8 + phase[i]) * 1.5;
+        targetY += Math.cos(animT * 9 + phase[i]) * 1.5;
+        targetZ += Math.sin(animT * 7 + phase[i] * 2) * 1.5;
+
+        vx[i] += (targetX - px[i]) * 0.02;
+        vy[i] += (targetY - py[i]) * 0.02;
+        vz[i] += (targetZ - pz[i]) * 0.02;
+
+        if (mouseXRef > 0) {
+          const scale = FOV / (FOV + pz[i] + CAMERA_Z);
+          const sx = px[i] * scale + CX;
+          const sy = py[i] * scale + CY;
+          const rdx = sx - mouseXRef;
+          const rdy = sy - mouseYRef;
+          const d2 = rdx * rdx + rdy * rdy;
+          if (d2 < REPEL_RADIUS * REPEL_RADIUS && d2 > 1) {
+            const d = Math.sqrt(d2);
+            const mag = REPEL_FORCE * (1 - d / REPEL_RADIUS) * 4;
+            vx[i] += (rdx / d) * mag;
+            vy[i] += (rdy / d) * mag;
+          }
+        }
+
+        vx[i] *= 0.85;
+        vy[i] *= 0.85;
+        vz[i] *= 0.85;
+        px[i] += vx[i];
+        py[i] += vy[i];
+        pz[i] += vz[i];
+      }
+    }
+
+    function draw(context, width, height) {
+      const CX = width / 2;
+      const CY = height / 2;
+
+      // Darker clear color and higher alpha to reduce blur/trails for sharper text
+      context.fillStyle = 'rgba(0, 0, 0, 0.45)';
+      context.fillRect(0, 0, width, height);
+
+      for (let i = 0; i < N; i++) {
+        const zPos = pz[i] + CAMERA_Z;
+        if (zPos < 10) continue;
+        const scale = FOV / zPos;
+        const sx = px[i] * scale + CX;
+        const sy = py[i] * scale + CY;
+        const spd = Math.sqrt(vx[i] * vx[i] + vy[i] * vy[i] + vz[i] * vz[i]);
+        // Increased base alpha (0.35) and scale weighting for better visibility
+        const a = Math.min(1, (0.35 + spd * 0.1) * (scale * 0.75));
+        const size = (0.6 + spd * 0.12) * scale;
+        const h = (hue[i] + animT * 15) % 360;
+        context.beginPath();
+        context.arc(sx, sy, Math.max(0.1, size), 0, 6.2832);
+        context.fillStyle = `hsla(${h}, 95%, 75%, ${a})`;
+        context.fill();
+      }
+    }
+
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = `${W}px`;
+    canvas.style.height = `${H}px`;
+    ctx.scale(dpr, dpr);
+
+    initText(W, H);
+    initParticles(W, H);
+
+    const handleMouseMove = (e) => {
+      mouseX = e.clientX;
+      mouseY = e.clientY;
     };
 
-    const handleLeave = () => {
-      content.style.transform = 'perspective(1000px) rotateX(0deg) rotateY(0deg)';
+    const handleMouseLeave = () => {
+      mouseX = -9999;
+      mouseY = -9999;
     };
 
-    hero.addEventListener('mousemove', handleMove);
-    hero.addEventListener('mouseleave', handleLeave);
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseleave', handleMouseLeave);
+
+    function loop() {
+      update(mouseX, mouseY, W, H);
+      draw(ctx, W, H);
+      animFrame = requestAnimationFrame(loop);
+    }
+
+    loop();
+
     return () => {
-      hero.removeEventListener('mousemove', handleMove);
-      hero.removeEventListener('mouseleave', handleLeave);
+      cancelAnimationFrame(animFrame);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseleave', handleMouseLeave);
     };
   }, []);
 
-  /* ── 3D Feature Card Handlers ──────────────────────────── */
-  const handleCardEnter = (e) => {
-    e.currentTarget.style.transform = 'perspective(800px) rotateY(8deg) rotateX(4deg) translateZ(20px)';
-    e.currentTarget.style.boxShadow = '-10px 10px 30px rgba(16,185,129,0.2)';
-  };
-  const handleCardLeave = (e) => {
-    e.currentTarget.style.transform = 'perspective(800px) rotateY(0deg) rotateX(0deg) translateZ(0px)';
-    e.currentTarget.style.boxShadow = 'none';
-  };
-
-  /* ── Gradient background per theme ─────────────────────── */
-  const heroGradient = isDark
-    ? 'linear-gradient(-45deg, #000000, #0a1a0e, #000000, #051209, #0a1a0e, #000000)'
-    : 'linear-gradient(-45deg, #f0fdf4, #ecfdf5, #f8fafc, #f0fdf4, #d1fae5, #ffffff)';
-
   return (
-    <div style={{ background: 'var(--bg-primary)', color: 'var(--text-primary)', minHeight: '100vh', overflowX: 'hidden' }}>
-      {/* ── NAVBAR ─────────────────────────────────────── */}
-      <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0,
-        padding: '16px 32px',
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        borderBottom: '1px solid var(--border-color)',
-        background: isDark ? 'rgba(0,0,0,0.8)' : 'rgba(255,255,255,0.8)',
-        backdropFilter: 'blur(12px)',
-        zIndex: 1000,
-      }}>
-        <span style={{ fontSize: '20px', fontWeight: 700, color: 'var(--accent)' }}>PaperPilot</span>
-        <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-          <button
-            onClick={toggleTheme}
-            style={{
-              background: 'var(--bg-surface)', border: '1px solid var(--border-color)',
-              borderRadius: '8px', padding: '8px 14px', color: 'var(--text-primary)',
-              cursor: 'pointer', fontSize: '13px', fontWeight: 600,
-            }}
-            title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
-          >{isDark ? 'Light' : 'Dark'}</button>
-          <button
-            onClick={() => navigate('/login')}
-            style={{
-              background: 'transparent', border: '1px solid var(--border-color)',
-              color: 'var(--text-primary)', padding: '10px 24px', borderRadius: '8px',
-              fontWeight: 600, cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-            onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-color)'}
-          >Login</button>
-          <button
-            onClick={() => navigate('/signup')}
-            style={{
-              background: 'var(--accent)', border: 'none', color: '#fff',
-              padding: '10px 24px', borderRadius: '8px', fontWeight: 600,
-              cursor: 'pointer', fontSize: '14px', transition: 'all 0.2s ease',
-            }}
-            onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-dark)'}
-            onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
-          >Get Started</button>
+    <div className="landing-page">
+      <canvas ref={canvasRef} className="landing-canvas" aria-hidden="true" />
+
+      <nav className="landing-nav">
+        <div className="landing-brand">PipelineIQ</div>
+        <div className="landing-nav-actions">
+          <button className="landing-theme-btn" onClick={toggleTheme} title={isDark ? 'Switch to Light Mode' : 'Switch to Dark Mode'}>
+            {isDark ? 'Light' : 'Dark'}
+          </button>
+          <button className="landing-secondary-btn" onClick={() => navigate('/login')}>
+            Login
+          </button>
+          <button className="landing-primary-btn" onClick={() => navigate('/signup')}>
+            Get Started
+          </button>
         </div>
       </nav>
 
-      {/* ── HERO ───────────────────────────────────────── */}
-      <section
-        ref={heroRef}
-        style={{
-          minHeight: '100vh',
-          display: 'flex', flexDirection: 'column',
-          alignItems: 'center', justifyContent: 'center',
-          textAlign: 'center',
-          padding: '120px 24px 80px',
-          position: 'relative',
-          overflow: 'hidden',
-          background: heroGradient,
-          backgroundSize: '400% 400%',
-          animation: 'gradientRotate 8s ease infinite',
-        }}
-      >
-        {/* ── Particle Dots ──────────────────────────────── */}
-        {particles.map((p, i) => (
-          <div key={`p${i}`} style={{
-            position: 'absolute',
-            width: `${p.size}px`, height: `${p.size}px`,
-            borderRadius: '50%',
-            background: `rgba(16, 185, 129, ${0.3 + (i % 4) * 0.1})`,
-            top: p.top, left: p.left, right: p.right,
-            animation: `particleFloat ${p.dur} ease-in-out infinite`,
-            animationDelay: p.delay,
-            pointerEvents: 'none',
-            willChange: 'transform, opacity',
-          }} />
-        ))}
-
-        {/* ── 3D Floating Cards ──────────────────────────── */}
-        {floatingCards.map((card, i) => (
-          <div key={i} style={{
-            position: 'absolute',
-            background: 'var(--accent-bg)',
-            border: '1px solid var(--accent-border)',
-            borderRadius: '12px',
-            padding: '12px 16px',
-            fontSize: '13px',
-            color: 'var(--text-secondary)',
-            animation: `float3d ${card.dur} ease-in-out infinite`,
-            animationDelay: card.delay,
-            opacity: visible ? 0.7 : 0,
-            transition: 'opacity 0.8s ease',
-            pointerEvents: 'none',
-            transformStyle: 'preserve-3d',
-            perspective: '1000px',
-            willChange: 'transform',
-            backdropFilter: 'blur(4px)',
-            boxShadow: '0 4px 15px rgba(0,0,0,0.1)',
-            ...(i === 0 ? { top: '20%', right: '8%' } :
-               i === 1 ? { top: '35%', left: '6%' } :
-               i === 2 ? { bottom: '30%', right: '12%' } :
-                         { bottom: '20%', left: '10%' }),
-          }}>
-            {card.text}
-          </div>
-        ))}
-
-        {/* ── Hero Content (3D tilt target) ──────────────── */}
-        <div
-          ref={heroContentRef}
-          style={{ transition: 'transform 0.1s ease', willChange: 'transform' }}
-        >
-          <h1 style={{
-            fontSize: 'clamp(36px, 5vw, 64px)',
-            fontWeight: 800,
-            lineHeight: 1.1,
-            marginBottom: '24px',
-            animation: visible ? 'fadeInUp 0.5s ease both' : 'none',
-            animationDelay: '0s',
-          }}>
-            <span style={{ color: 'var(--text-primary)' }}>Understand Any Research Paper</span>
+      <section className="landing-hero">
+        <canvas id="network-canvas"></canvas>
+        {/* <div className="landing-hero-card">
+          <div className="landing-badge">AI-Powered • Production Grade</div>
+          <h1 className="landing-title">
+            Review Your ML Pipeline
             <br />
-            <span style={{ color: '#10b981' }}>In Minutes</span>
+            <span className="accent">Like a Senior Engineer</span>
           </h1>
-
-          <p style={{
-            fontSize: '18px',
-            color: 'var(--text-muted)',
-            maxWidth: '560px',
-            lineHeight: 1.7,
-            marginBottom: '36px',
-            margin: '0 auto 36px',
-            animation: visible ? 'fadeInUp 0.5s ease both' : 'none',
-            animationDelay: '0.2s',
-          }}>
-            Upload a PDF. Get AI summaries, multi-level explanations, and chat with your paper.
+          <p className="landing-subtitle">
+            Upload Python files, Jupyter notebooks, or papers.{"\n"}
+            Get production-grade AI review instantly.
           </p>
-
-          <div style={{
-            display: 'flex', gap: '16px', flexWrap: 'wrap', justifyContent: 'center',
-            marginBottom: '24px',
-            animation: visible ? 'fadeInUp 0.5s ease both' : 'none',
-            animationDelay: '0.4s',
-          }}>
-            <button
-              onClick={() => navigate('/signup')}
-              style={{
-                background: 'var(--accent)', color: '#fff',
-                padding: '14px 32px', borderRadius: '8px',
-                fontWeight: 600, border: 'none', cursor: 'pointer',
-                fontSize: '16px', transition: 'all 0.2s ease',
-                animation: 'glowPulse 2s ease-in-out infinite',
-                willChange: 'box-shadow',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-dark)'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
-            >Get Started</button>
-            <button
-              onClick={() => navigate('/login')}
-              style={{
-                background: 'transparent', border: '1px solid var(--border-color)',
-                color: 'var(--text-primary)', padding: '14px 32px',
-                borderRadius: '8px', fontWeight: 600, cursor: 'pointer',
-                fontSize: '16px', transition: 'all 0.2s ease',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
-              onMouseLeave={(e) => e.currentTarget.style.borderColor = 'var(--border-color)'}
-            >Login</button>
+          <div className="landing-actions">
+            <button className="landing-primary-btn" onClick={() => navigate('/signup')}>
+              Start Analyzing Free →
+            </button>
+            <button className="landing-secondary-btn" onClick={() => navigate('/login')}>
+              Login
+            </button>
           </div>
+          <div className="landing-support-text">✓ Free   ✓ No credit card   ✓ Instant results</div>
+        </div> */}
+      </section>
 
-          <p style={{
-            fontSize: '13px', color: 'var(--text-muted)',
-            animation: visible ? 'fadeInUp 0.5s ease both' : 'none',
-            animationDelay: '0.6s',
-          }}>
-            Free to use &mdash; No credit card &mdash; Instant results
-          </p>
+      <section className="landing-section features t">
+        <div className="landing-section-inner" ref={featuresRef}>
+          <div className="landing-section-heading animate-on-scroll">
+            <h2>Built for fast ML review</h2>
+            <p>Analyze code, trace issues, and guide fixes with a single workflow.</p>
+          </div>
+          <div className="landing-feature-grid">
+            {features.map((feature, index) => (
+              <div key={feature.title} className={`landing-feature-card animate-on-scroll delay-${Math.min(index + 1, 4)}`}>
+                <div className="landing-feature-icon">{feature.icon}</div>
+                <h3>{feature.title}</h3>
+                <p>{feature.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
 
-      {/* ── FEATURES ───────────────────────────────────── */}
-      <section
-        id="features"
-        ref={featuresRef}
-        style={{ padding: '80px 24px', maxWidth: '960px', margin: '0 auto' }}
-      >
-        <div className="animate-on-scroll" style={{ textAlign: 'center', marginBottom: '48px' }}>
-          <h2 style={{ fontSize: '32px', fontWeight: 700 }}>Everything You Need</h2>
-          <p style={{ color: 'var(--text-muted)', fontSize: '16px', marginTop: '8px' }}>
-            Powered by state-of-the-art AI
-          </p>
-        </div>
-        <div style={{
-          display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
-          gap: '20px',
-        }}>
-          {features.map((f, i) => (
-            <div
-              key={i}
-              className={`animate-on-scroll delay-${i + 1}`}
-              style={{
-                background: 'var(--bg-card)',
-                border: '1px solid var(--border-color)',
-                borderRadius: '12px',
-                padding: '24px',
-                cursor: 'default',
-                transition: 'transform 0.4s ease, box-shadow 0.4s ease, border-color 0.3s ease',
-                transformStyle: 'preserve-3d',
-                willChange: 'transform',
-              }}
-              onMouseEnter={handleCardEnter}
-              onMouseLeave={handleCardLeave}
-            >
-              <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '8px' }}>{f.title}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', lineHeight: 1.6 }}>{f.desc}</p>
-            </div>
-          ))}
+      <section className="landing-section">
+        <div className="landing-section-inner" ref={stepsRef}>
+          <div className="landing-section-heading animate-on-scroll" style={{ textAlign: 'center' }}>
+            <h2>How it works</h2>
+            <p>Three steps from upload to actionable feedback.</p>
+          </div>
+          <div className="landing-steps">
+            {steps.map((step, index) => (
+              <div key={step.title} className={`landing-step-card animate-on-scroll delay-${Math.min(index + 1, 4)}`}>
+                <div className="landing-step-number">{step.num}</div>
+                <h3>{step.title}</h3>
+                <p>{step.desc}</p>
+              </div>
+            ))}
+          </div>
         </div>
       </section>
-
-      {/* ── HOW IT WORKS ───────────────────────────────── */}
-      <section ref={stepsRef} style={{ padding: '80px 24px', maxWidth: '800px', margin: '0 auto' }}>
-        <h2 className="animate-on-scroll" style={{ textAlign: 'center', fontSize: '32px', fontWeight: 700, marginBottom: '48px' }}>
-          How It Works
-        </h2>
-        <div style={{
-          display: 'flex', justifyContent: 'space-between',
-          alignItems: 'flex-start', gap: '24px',
-          flexWrap: 'wrap', position: 'relative',
-        }}>
-          <div style={{
-            position: 'absolute', top: '24px', left: '15%', right: '15%',
-            height: '2px', borderBottom: '2px dashed var(--border-color)', zIndex: 0,
-          }} />
-          {steps.map((s, i) => (
-            <div key={i} className={`animate-on-scroll delay-${i + 1}`} style={{
-              flex: '1 1 200px', display: 'flex', flexDirection: 'column',
-              alignItems: 'center', textAlign: 'center',
-              position: 'relative', zIndex: 1,
-            }}>
-              <div style={{
-                width: '48px', height: '48px', borderRadius: '50%',
-                background: 'var(--accent)', color: '#fff',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: '18px', fontWeight: 700, marginBottom: '16px',
-                boxShadow: '0 0 20px var(--accent-bg)',
-              }}>{s.num}</div>
-              <h3 style={{ fontSize: '16px', fontWeight: 600, marginBottom: '6px' }}>{s.title}</h3>
-              <p style={{ color: 'var(--text-secondary)', fontSize: '14px', maxWidth: '200px' }}>{s.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── CTA ────────────────────────────────────────── */}
-      <section style={{
-        padding: '80px 24px',
-        background: 'var(--accent-bg)',
-        borderTop: '1px solid var(--accent-border)',
-        borderBottom: '1px solid var(--accent-border)',
-        textAlign: 'center',
-      }}>
-        <h2 style={{ fontSize: '28px', fontWeight: 700, marginBottom: '12px' }}>
-          Ready to supercharge your research?
-        </h2>
-        <p style={{ color: 'var(--text-secondary)', fontSize: '16px', marginBottom: '32px' }}>
-          Start analyzing papers in under 60 seconds
-        </p>
-        <button
-          onClick={() => navigate('/signup')}
-          style={{
-            background: 'var(--accent)', color: '#fff',
-            padding: '14px 40px', borderRadius: '8px',
-            fontWeight: 600, border: 'none', cursor: 'pointer',
-            fontSize: '16px', transition: 'all 0.2s ease',
-            animation: 'glowPulse 2s ease-in-out infinite',
-            willChange: 'box-shadow',
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = 'var(--accent-dark)'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'var(--accent)'}
-        >Get Started Free</button>
-      </section>
-
-      {/* ── FOOTER ─────────────────────────────────────── */}
-      <footer style={{ padding: '40px 24px', textAlign: 'center', borderTop: '1px solid var(--border-color)' }}>
-        <p style={{ color: 'var(--text-muted)', fontSize: '14px' }}>PaperPilot &copy; 2024</p>
-        <p style={{ color: 'var(--text-muted)', fontSize: '13px', marginTop: '4px' }}>Built for researchers</p>
-      </footer>
     </div>
   );
 }
